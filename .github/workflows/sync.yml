@@ -34,7 +34,14 @@ jobs:
         # 将 upstream/main 替换为 upstream/master 或其他分支名
         run: |
           git checkout main
+          fork_head=$(git rev-parse HEAD)
           git merge upstream/main --no-edit
+          # Keep this fork's workflows. The GitHub App token cannot push
+          # workflow files introduced or changed by upstream.
+          git restore --source="$fork_head" --staged --worktree -- .github/workflows
+          if ! git diff --cached --quiet; then
+            git commit --amend --no-edit
+          fi
           # 如果合并冲突，可以使用 git merge --abort 中止，或者手动处理
 
       - name: Push to Origin
