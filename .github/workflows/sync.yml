@@ -35,11 +35,23 @@ jobs:
         run: |
           git checkout main
           fork_head=$(git rev-parse HEAD)
-          git merge upstream/main --no-edit
+          merge_status=0
+          git merge upstream/main --no-edit || merge_status=$?
+          if (( merge_status != 0 )); then
+            conflicts=$(git diff --name-only --diff-filter=U)
+            non_workflow_conflicts=$(printf '%s\n' "$conflicts" | grep -v '^\.github/workflows/' || true)
+            if [[ -z "$conflicts" || -n "$non_workflow_conflicts" ]]; then
+              printf 'Upstream merge failed outside the workflow directory:\n%s\n' "$conflicts" >&2
+              exit "$merge_status"
+            fi
+          fi
           # Keep this fork's workflows. The GitHub App token cannot push
           # workflow files introduced or changed by upstream.
+          git rm -rf --ignore-unmatch .github/workflows
           git restore --source="$fork_head" --staged --worktree -- .github/workflows
-          if ! git diff --cached --quiet; then
+          if git rev-parse --quiet --verify MERGE_HEAD >/dev/null; then
+            git commit --no-edit
+          elif ! git diff --cached --quiet; then
             git commit --amend --no-edit
           fi
           # 如果合并冲突，可以使用 git merge --abort 中止，或者手动处理
