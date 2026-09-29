@@ -84,7 +84,7 @@ func newUpgradeCmd() *cobra.Command {
 	return upgradeCmd
 }
 
-// upgrade upgrade higress resources from the cluster.
+// Upgrade Higress resources from the cluster.
 func upgrade(writer io.Writer, iArgs *InstallArgs) error {
 	if iArgs.FromHelm {
 		return upgradeFromHelm(writer, iArgs)
