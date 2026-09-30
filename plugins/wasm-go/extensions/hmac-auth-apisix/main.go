@@ -156,7 +156,7 @@ func onHttpRequestHeaders(ctx wrapper.HttpContext, cfg config.HmacAuthConfig) ty
 	}
 
 	// 如果有请求体且需要验证请求体，进入 onHttpRequestBody 方法
-	if wrapper.HasRequestBody() && cfg.ValidateRequestBody {
+	if ctx.HasRequestBody() && cfg.ValidateRequestBody {
 		return types.HeaderStopIteration
 	}
 	ctx.DontReadRequestBody()
@@ -389,6 +389,8 @@ func sendUnauthorizedResponse(message string) types.Action {
 }
 
 func setConsumerHeader(name string) {
+	// Replace rather than append: a client-supplied identity must never survive.
+	_ = proxywasm.RemoveHttpRequestHeader(consumerHeader)
 	_ = proxywasm.AddHttpRequestHeader(consumerHeader, name)
 }
 

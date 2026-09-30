@@ -17,6 +17,9 @@ The `hmac-auth-apisix` plugin is compatible with Apache APISIX's HMAC authentica
 **Note:**
 - In a single rule, authentication configuration and authorization configuration cannot coexist.
 - For requests that pass authentication and authorization, a `X-Mse-Consumer` field will be added to the request header to identify the caller's name.
+  The gateway **replaces** this header instead of appending to it: any client-supplied `X-Mse-Consumer` is removed
+  before the consumer name from this authentication is set. Downstream therefore always reads the gateway's own
+  assertion, so a caller cannot forge its identity by sending the header itself.
 
 
 ### Authentication Configuration
