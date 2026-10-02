@@ -29,9 +29,11 @@ controls exist.
   credential able to write `higress/plugin-server:<gateway-version>`. The
   plugin-server repository publisher may write only its development/candidate
   namespace.
-- Configure `PLUGIN_CANDIDATE_REGISTRY` and
-  `CANDIDATE_REGISTRY_USERNAME` / `CANDIDATE_REGISTRY_PASSWORD` as
-  repository-scoped secrets/variables. The preparation job no longer uses the
+- Configure `PLUGIN_CANDIDATE_REGISTRY` as a repository-scoped variable and
+  reuse the repository-scoped `REGISTRY_USERNAME` / `REGISTRY_PASSWORD`
+  secrets for its ACR login: the `candidates/` and `plugins/` namespaces live
+  in the same registry account as the image namespaces, so no duplicate
+  plugin-only credential is maintained. The preparation job no longer uses the
   `plugin-release-candidate` environment: candidate builds publish only into the
   content-addressed `candidates/` namespace, which nothing public resolves, so
   that phase requests no approval. Bootstrap capture reuses
