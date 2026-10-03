@@ -112,6 +112,10 @@ go.test.coverage: prebuild
 go.test.hgctl: prebuild
 	cd hgctl && go test ./... -count=1
 
+.PHONY: go.test.plugin-release
+go.test.plugin-release:
+	cd tools/plugin-release && go test ./... -count=1
+
 .PHONY: build
 build: prebuild $(OUT)
 	GOPROXY="$(GOPROXY)" GOOS=$(GOOS_LOCAL) GOARCH=$(GOARCH_LOCAL) LDFLAGS=$(RELEASE_LDFLAGS) tools/hack/gobuild.sh $(OUT)/ $(HIGRESS_BINARIES)

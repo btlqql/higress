@@ -981,6 +981,7 @@ if [ -z "$endpoint" ]; then echo "no endpoint in gh api invocation: $*" >&2; exi
 case "$endpoint" in
   */pulls) cat "$PULLS_FIXTURE" ;;
   */reviews) cat "$REVIEWS_FIXTURE" ;;
+  */pulls/*) cat "$PULLS_SINGLE_FIXTURE" ;;
   */collaborators/*/permission) user=$(basename "$(dirname "$endpoint")"); cat "$PERMISSIONS_FIXTURE/$user.json" ;;
   *) echo "unexpected gh api endpoint: $endpoint" >&2; exit 2 ;;
 esac
@@ -988,6 +989,17 @@ exit @@STATUS@@
 `, "@@STATUS@@", status))
 			pullsFixture := filepath.Join(root, "pulls.json")
 			if err := os.WriteFile(pullsFixture, mustJSON(t, payloads), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			// The commit-associated pulls list omits maintainer_can_modify,
+			// so the workflow re-reads the single-PR endpoint; serve the same
+			// payloads through it (the first entry is the preparation PR).
+			pullsSingleFixture := filepath.Join(root, "pulls-single.json")
+			single := map[string]any{}
+			if len(payloads) > 0 {
+				single = payloads[0]
+			}
+			if err := os.WriteFile(pullsSingleFixture, mustJSON(t, single), 0o600); err != nil {
 				t.Fatal(err)
 			}
 			reviewsFixture := filepath.Join(root, "reviews.json")
@@ -1018,6 +1030,7 @@ exit @@STATUS@@
 			cmd.Env = append(os.Environ(),
 				"PATH="+bin+":"+os.Getenv("PATH"),
 				"PULLS_FIXTURE="+pullsFixture,
+				"PULLS_SINGLE_FIXTURE="+pullsSingleFixture,
 				"REVIEWS_FIXTURE="+reviewsFixture,
 				"GH_TOKEN=fixture-token",
 				"GITHUB_REPOSITORY=higress-group/higress",
@@ -1142,7 +1155,7 @@ func TestPreparationSweepsRegistryBeforeOpeningThePR(t *testing.T) {
 	for _, required := range []string{
 		"# BEGIN preparation-pr-contract",
 		`label="release/$GATEWAY_VERSION"`,
-		`label_ref=$(jq -rn --arg label "$label" '$label | @uri')`,
+		`label_ref=$(jq -rn --arg label_id "$label" '$label_id | @uri')`,
 		`if ! gh api "repos/$GITHUB_REPOSITORY/labels/$label_ref" >/dev/null 2>&1; then`,
 		`gh label create "$label"`,
 		`test "$(gh api "repos/$GITHUB_REPOSITORY/labels/$label_ref" --jq .name)" = "$label"`,

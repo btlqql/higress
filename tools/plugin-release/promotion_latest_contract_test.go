@@ -410,7 +410,9 @@ if [ "$1 $2" = "manifest fetch" ]; then
     jq -cn --arg digest "$(jq -er .digest <<<"$record")" '{digest:$digest}'
     exit 0
   fi
-  if [ "${4:-}" = "--format" ]; then
+  if [ "${4:-}" = "" ]; then
+    # A bare manifest fetch prints the manifest itself, whose top-level
+    # annotations the latest-alias check reads.
     jq -cn --arg version "$(jq -r '.version // empty' <<<"$record")" '{annotations:{"org.opencontainers.image.version":$version}}'
     exit 0
   fi
