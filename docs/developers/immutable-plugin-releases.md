@@ -126,6 +126,11 @@ repository source alone.
    must fail before mutation on a conflicting digest, and it skips every entry
    the migration preflight excluded. Before any `latest` write, it fetches and
    pulls every non-blocked public artifact remotely by its snapshot digest. The
+   `latest` phase builds the release tool from the dispatch commit on `main`
+   (which must descend from `source_commit`, mirroring the emergency channel)
+   and then pins its working tree back to `source_commit`, so a tool fix merged
+   after preparation takes effect without re-preparing while every snapshot,
+   catalog, and history read stays anchored to the preparation commit. The
    local gate verifies the OCI schema and two-layer order, provenance,
    descriptor sizes and digests, canonical empty JSON config, and complete Wasm
    validity. It also requires exported memory, exact `(i32,i32)->i32`
@@ -139,7 +144,11 @@ repository source alone.
    gate and still waits for the protected `plugin-release-production`
    environment approval. An existing `latest` already serving the desired
    digest is accepted before reading legacy version annotations and is never
-   rewritten.
+   rewritten. A same-version `latest` serving different bytes fails closed for
+   pipeline-built candidates, but a public-provenance entry — whose digest was
+   reviewed from the live version tag and re-verified by the version phase and
+   pull gate this run — repairs the alias to the snapshot digest and journals
+   the displaced version and digest as legacy out-of-band drift.
 6. Build `higress/plugin-server:<gateway-version>` from the exact approved
    plugin-server commit and snapshot. Its dry run checks out and tests that
    exact plugin-server source, binds the gateway version/path/plan/previous
