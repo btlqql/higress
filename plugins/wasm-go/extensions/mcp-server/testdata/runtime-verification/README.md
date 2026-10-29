@@ -11,6 +11,51 @@ A clean exact-head run must pass every enumerated case with **0 FAIL**.
 `expected-main-cases.json` binds the traffic case IDs to the final matrix; a
 missing or duplicate case is a failure, even if all remaining cases pass.
 
+## Focused upstream instructions mode
+
+From `plugins/wasm-go/extensions/mcp-server`, on a clean committed candidate:
+
+```bash
+RUNTIME_VERIFY_INSTRUCTIONS=1 \
+INSTRUCTIONS_BASELINE_SHA=36f2f1ac5c7305c5a46c296c617b45d1fbacb7d3 \
+RUNTIME_EVIDENCE=/Users/<user>/instructions-evidence \
+bash testdata/runtime-verification/run.sh
+```
+
+This optional mode uses the same build, pinned images, listener generator,
+backend, exchange ledger, lifecycle helpers and task-owned cleanup as the full
+runner. It builds only the candidate and the pinned pre-feature baseline. Both
+use the candidate harness; the baseline receives configurations that omit the
+new flag. Candidate omitted/false responses are compared to that baseline.
+The remaining cases cover extraction and field omission, decoded UTF-8 byte
+limits, gateway field ownership without whole-result schema validation,
+server-level header/query/passthrough/anonymous authentication, public discover
+with protected tools, failures and incomplete results, ordinary header/metadata
+preservation, main-route retries and timeout, denial by a later filter, current
+request values and concurrent isolation, and a disconnected client followed by
+a fresh request. Configured Envoy retries are counted separately from a single
+plugin route submission. The disconnect case observes the existing lifecycle;
+it does not assert a new active upstream reset guarantee.
+
+[`instructions_contract.py`](./instructions_contract.py) independently pins the
+baseline's 2 cases/2 exchanges and candidate's 29 cases/33 exchanges. Finalization
+requires every case's exact request IDs and count, matching case/global exchange
+ledgers, and one matching access record per request. The raw disconnect retains
+its submitted HTTP bytes and hash plus Envoy's `code=0 flags=DC` observation; it
+does not invent an HTTP response. Missing, duplicated or substituted cases,
+exchanges and access records fail. RPC-error cases require an error with no
+`result`, even when a mixed upstream envelope contains valid instructions.
+[`instructions_self_test.py`](./instructions_self_test.py) exercises these
+negative controls and ordinary/controlled header checks for the legacy bridge.
+
+`instructions-baseline.json`, `instructions-candidate.json`, access logs,
+image/tool versions, cleanup proof and `instructions-manifest.json` identify
+this as **focused** evidence. Its manifest explicitly does not certify the
+historical full matrix. Run the existing default `run.sh` and `run-routing.sh`
+separately for those regressions; their fixed baselines and assertions remain
+unchanged. The normal dirty-tree development override is not acceptance
+verification.
+
 ## Purpose and validation boundary
 
 This harness verifies the MCP 2026 Tools Baseline at the Envoy data-plane
@@ -102,10 +147,13 @@ failed directory must not be reused, modified, or deleted.
    `-trimpath`. It also builds a corpus variant of each revision with the same
    hashed registered-tool fixture needed to represent a bounded `json.Number`
    that REST JSON decoding cannot preserve. The script records all six Wasm
-   SHA256 values. A seventh Wasm is built independently from auto pre-change
-   revision `dc0999326b1a8df4269c13d0cf6ee2b725259f6e`; it must reject auto and
-   match the candidate on the five existing explicit/default proxy cases. All
-   temporary archived source trees are removed before startup.
+   SHA256 values. A seventh Wasm from auto pre-change revision
+   `dc0999326b1a8df4269c13d0cf6ee2b725259f6e` proves only that auto is rejected.
+   An eighth Wasm from `36f2f1ac5c7305c5a46c296c617b45d1fbacb7d3` independently
+   checks the five existing explicit/default profiles against the accepted
+   pre-instructions RouteCall behavior. These baselines have separate source,
+   Wasm and configuration identities in the manifest. All temporary archived
+   source trees are removed before startup.
 3. [`generate_envoy.py`](./generate_envoy.py) writes the main static Envoy
    configuration with positive auto listeners, an unknown-strategy negative
    control, and isolated auto pre-change rejection and explicit-strategy
@@ -142,7 +190,7 @@ failed directory must not be reused, modified, or deleted.
    auto pre-change rejection and explicit-strategy differential results, checks
    case completeness and access-log coverage, writes the manifest and checksums, and
    returns non-zero for any failed matrix or coverage assertion.
-8. A completed run deletes all seven temporary Wasm files. Build artifacts must
+8. A completed run deletes all eight temporary Wasm files. Build artifacts must
    never be committed.
 
 ## Directory components
@@ -163,7 +211,7 @@ failed directory must not be reused, modified, or deleted.
   and asserts recorded start/verify/stop/log order including early termination
   after a failed stop.
 - [`compose_config_self_test.py`](./compose_config_self_test.py) parses the
-  provider-resolved Compose JSON and requires the explicit set of thirteen Envoy command
+  provider-resolved Compose JSON and requires the explicit set of fifteen Envoy command
   arrays to contain the independent tokens `--concurrency` and `1`.
 - [`generate_envoy.py`](./generate_envoy.py) generates listeners, routes,
   clusters, plugin configuration, and isolated negative/baseline configurations.
@@ -303,10 +351,12 @@ Such a manifest records `source_tree_clean: false`. A dirty-tree run is useful
 for debugging but is not final exact-head evidence and should not be used as a
 review, release, or regression baseline.
 
-If a registry is temporarily rate-limited and both fixed images already exist
-locally, a dirty development run may also set `RUNTIME_SKIP_PULL=1`. The harness
-still records the cached resolved digests. This flag is rejected unless
-`RUNTIME_ALLOW_DIRTY=1`; clean exact-head evidence always refreshes both tags.
+When both fixed images already exist locally, `RUNTIME_SKIP_PULL=1` uses those
+cached images and still records their resolved digests. This explicit override
+requires `RUNTIME_ALLOW_DIRTY=1`; neither option changes the independently
+measured `source_tree_clean` value. Acceptance evidence must have an actually
+clean committed tree, record both options and the cached image identities, and
+pass the complete required matrix. The default run refreshes both tags.
 
 ## Runtime matrix
 
@@ -331,8 +381,10 @@ through the main gateway:
    blocked call, and preserves the legacy method, path, query, header,
    conversion, and JSON-body mapping for all three retained legacy versions.
 7. **Modern-to-modern proxy** verifies one stateless upstream RPC per downstream
-   RPC, modern metadata, scoped `Mcp-Param-*` forwarding, and credential/session
-   header isolation.
+   RPC, modern metadata and scoped `Mcp-Param-*` forwarding. It independently
+   requires ordinary `Cookie` and fixture `x-unrelated-credential` headers to
+   survive, while `Authorization`, MCP session, `Last-Event-ID` and the internal
+   route header are absent under this fixture's policy.
 8. **Modern-to-legacy proxy** verifies an isolated
    initialize -> initialized -> target-RPC handshake for each list or call and
    exactly six backend events in total.
@@ -386,11 +438,20 @@ through the main gateway:
 26. **Unknown strategy rejection** verifies that an unrecognized
     `protocolStrategy` is rejected before any upstream request.
 
-Auto adds two isolated baseline cases and one case-completeness gate. The exact
-pre-change Wasm must reject auto; its five explicit/default proxy cases must
-match the candidate in responses, operation headers and backend sequences, with
-complete access logs for both runs. Existing REST schema baseline/oracle phases
-remain independent.
+Auto adds two isolated baseline cases and one case-completeness gate. Their
+baselines serve distinct purposes:
+
+| Baseline | Fixed source | Module / configuration | Required proof |
+| --- | --- | --- | --- |
+| `AUTO_BASELINE_SHA` | `dc0999326b1a8df4269c13d0cf6ee2b725259f6e` | `auto-baseline-plugin.wasm` / `envoy-auto-baseline.yaml` | Reject auto before any backend request. |
+| `EXPLICIT_BASELINE_SHA` | `36f2f1ac5c7305c5a46c296c617b45d1fbacb7d3` | `explicit-baseline-plugin.wasm` / `envoy-auto-explicit-baseline.yaml` | Match the candidate's five explicit/default profiles using real requests, normalized results, backend sequences and complete access ledgers. |
+
+The existing `gateway-auto-explicit-baseline` Compose service and evidence
+filenames are retained. Its module comes from the independent explicit-profile
+baseline, not the older auto-rejection revision. Missing or duplicate cases,
+result/request/header/status changes, changed backend sequences, and missing,
+duplicate or unexpected access IDs still fail the comparison. Existing REST
+schema baseline/oracle and routing oracle/affected phases remain independent.
 
 The named auto traffic cases in `verify_auto.py` cover modern 2-call and legacy
 4-call success, selected 2025-06-18 headers, ordinary HTTP fallback, JSON/SSE
@@ -448,7 +509,8 @@ A completed evidence directory contains:
 - `backend-auto-baseline-state.json` and `gateway-auto-baseline.log`: pre-change
   auto rejection with zero upstream events.
 - `auto-explicit-baseline.json` and `gateway-auto-explicit-baseline.log`: exact
-  pre-change explicit/default proxy responses, backend ledger and access log.
+  accepted pre-instructions explicit/default responses, backend ledger and
+  access log from the independent `36f2f1ac...` compatibility module.
 - `backend-baseline-state.json` and `gateway-baseline.log`: affected-revision
   zero-upstream and compiler-rejection proof.
 - `oracle-verification.json`, `backend-oracle-state.json`, and
@@ -485,8 +547,12 @@ The main `manifest.json` fields have these meanings:
 
 - `source_sha` and `source_tree_clean` identify the committed code under test.
 - `plugin_sha256` identifies the exact temporary WASM bytes loaded by Envoy.
-- `auto_baseline_source_sha` and `auto_baseline_plugin_sha256` identify the
-  separately built pre-auto rejection and explicit-strategy differential module.
+- `auto_baseline_source_sha`, `auto_baseline_plugin_sha256`,
+  `auto_baseline_config_sha256` and `auto_baseline_role` identify the separately
+  built pre-auto rejection module and its actual configuration.
+- `explicit_baseline_source_sha`, `explicit_baseline_plugin_sha256`,
+  `explicit_baseline_config_sha256` and `explicit_baseline_role` identify the
+  independent accepted explicit/default compatibility module and configuration.
 - `baseline_source_sha` and `baseline_plugin_sha256` identify the independently
   built pinned rejection baseline.
 - `oracle_source_sha` and `oracle_plugin_sha256` identify the independently
@@ -504,9 +570,10 @@ The main `manifest.json` fields have these meanings:
 - `sanitization` records the evidence redaction policy.
 - `cleanup` embeds the cleanup-proof result.
 
-The three exact-revision Wasm files and three `corpus-plugin-*.wasm` files are
-temporary. Their SHA256 values are calculated before containers start and
-recorded in `manifest.json`; the completed run deletes all six and excludes
+The three main/oracle/affected Wasm files, three `corpus-plugin-*.wasm` files,
+and two independent auto-rejection/explicit-compatibility modules are temporary.
+Their SHA256 values are calculated before containers start and recorded in
+`manifest.json`; the completed run deletes all eight and excludes
 them from `SHA256SUMS`. If the script exits before finalization, delete any
 partial artifact after diagnosis and never add it to Git.
 
@@ -556,6 +623,7 @@ assert manifest["source_tree_clean"] is True
 assert manifest["baseline_source_sha"] == "c55d9825c90868f50edbff9764a6b3cf2eb13162"
 assert manifest["oracle_source_sha"] == "39ec41aab6eb1d40499bed2847085696de0ebb96"
 assert manifest["auto_baseline_source_sha"] == "dc0999326b1a8df4269c13d0cf6ee2b725259f6e"
+assert manifest["explicit_baseline_source_sha"] == "36f2f1ac5c7305c5a46c296c617b45d1fbacb7d3"
 assert matrix["summary"] == {"pass": len(matrix["cases"]), "fail": 0}
 expected_main = json.loads((root / "expected-main-cases.json").read_text())
 case_names = [case["case"] for case in matrix["cases"]]
@@ -572,6 +640,9 @@ assert not coverage["unexpectedRequestIds"]
 assert len(manifest["plugin_sha256"]) == 64
 assert len(manifest["baseline_plugin_sha256"]) == 64
 assert len(manifest["auto_baseline_plugin_sha256"]) == 64
+assert len(manifest["explicit_baseline_plugin_sha256"]) == 64
+assert len(manifest["auto_baseline_config_sha256"]) == 64
+assert len(manifest["explicit_baseline_config_sha256"]) == 64
 assert len(manifest["oracle_plugin_sha256"]) == 64
 assert len(manifest["corpus_fixture_sha256"]) == 64
 assert all(len(value) == 64 for value in manifest["corpus_plugin_sha256"].values())
